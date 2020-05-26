@@ -1,0 +1,294 @@
+
+<!DOCTYPE html>
+<html>
+  <head>
+    
+<meta charset="utf-8" >
+
+<title>3 安装Ceilometer（数据采集服务） | Komorebi</title>
+<meta name="description" content="拾柒">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.0/animate.min.css">
+
+<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr" crossorigin="anonymous">
+<link rel="shortcut icon" href="https://dorsey.github.io//favicon.ico?v=1590482321358">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+<link rel="stylesheet" href="https://dorsey.github.io//styles/main.css">
+
+
+
+<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+<script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+  </head>
+  <body>
+    <div id="app" class="main">
+      <div class="site-header-container">
+  <div class="site-header">
+    <div class="left">
+      <a href="https://dorsey.github.io/">
+        <img class="avatar" src="https://dorsey.github.io//images/avatar.png?v=1590482321358" alt="" width="32px" height="32px">
+      </a>
+      <a href="https://dorsey.github.io/">
+        <h1 class="site-title">Komorebi</h1>
+      </a>
+    </div>
+    <div class="right">
+      <transition name="fade">
+        <i class="icon" :class="{ 'icon-close-outline': menuVisible, 'icon-menu-outline': !menuVisible }" @click="menuVisible = !menuVisible"></i>
+      </transition>
+    </div>
+  </div>
+</div>
+
+<transition name="fade">
+  <div class="menu-container" style="display: none;" v-show="menuVisible">
+    <div class="menu-list">
+      
+        
+          <a href="/" class="menu purple-link">
+            首页
+          </a>
+        
+      
+        
+          <a href="/archives" class="menu purple-link">
+            归档
+          </a>
+        
+      
+        
+          <a href="/tags" class="menu purple-link">
+            标签
+          </a>
+        
+      
+        
+          <a href="/post/about" class="menu purple-link">
+            关于
+          </a>
+        
+      
+    </div>
+  </div>
+</transition>
+
+
+      <div class="content-container">
+        <div class="post-detail">
+          
+          <h2 class="post-title">3 安装Ceilometer（数据采集服务）</h2>
+          <div class="post-info post-detail-info">
+            <span><i class="icon-calendar-outline"></i> 2020-05-26</span>
+            
+          </div>
+          <div class="post-content">
+            <h5 id="安装ceilometer">安装ceilometer</h5>
+<p><code>yum -y install openstack-ceilometer-notification openstack-ceilometer-central</code></p>
+<h5 id="编辑配置文件">编辑配置文件</h5>
+<blockquote>
+<p>/etc/ceilometer/pipeline.yaml</p>
+</blockquote>
+<pre><code>publishers: 
+   - gnocchi://?filter_project=service&amp;max_queue_length=512&amp;archive_policy=low
+</code></pre>
+<blockquote>
+<p>/etc/ceilometer/event_pipeline.yaml</p>
+</blockquote>
+<pre><code>publishers: 
+   - panko://
+</code></pre>
+<blockquote>
+<p>/etc/ceilometer/ceilometer.conf</p>
+</blockquote>
+<pre><code>[DEFAULT]
+debug = true 
+auth_strategy = keystone 
+transport_url = rabbit://openstack:openstack@controller 
+pipeline_cfg_file = pipeline.yaml
+
+[notification]
+store_events = true
+messaging_urls = rabbit://openstack:openstack@controller
+
+[polling]
+cfg_file = polling.yaml
+
+[service_credentials]
+auth_type = password
+auth_url = http://controller:5000/v3
+project_domain_id = default
+user_domain_id = default
+project_name = service
+username = ceilometer
+password = 123456
+interface = internalURL
+region_name = RegionOne
+</code></pre>
+<h5 id="在gnocchi创建ceilometer资源">在gnocchi创建ceilometer资源</h5>
+<p><code>ceilometer-upgrade</code></p>
+<h5 id="启用服务">启用服务</h5>
+<pre><code>systemctl enable openstack-ceilometer-notification.service openstack-ceilometer-central.service
+systemctl start openstack-ceilometer-notification.service openstack-ceilometer-central.service
+</code></pre>
+<h5 id="nova部分">nova部分</h5>
+<p><code>yum install -y openstack-ceilometer-compute</code></p>
+<blockquote>
+<p>/etc/ceilometer/ceilometer.conf</p>
+</blockquote>
+<pre><code>[DEFAULT]
+transport_url = rabbit://openstack:openstack@controller
+
+[service_credentials]
+auth_type = password
+auth_url = http://controller:5000/v3
+project_domain_id = default
+user_domain_id = default
+project_name = service
+username = ceilometer
+password = 123456
+interface = internalURL
+region_name = RegionOne
+
+/etc/nova/nova.conf
+[DEFAULT]
+instance_usage_audit = True
+instance_usage_audit_period = hour
+
+[notifications]
+notify_on_state_change = vm_and_task_state
+
+[oslo_messaging_notifications]
+driver = messagingv2
+</code></pre>
+<pre><code>systemctl enable openstack-ceilometer-compute.service
+systemctl start openstack-ceilometer-compute.service
+systemctl restart openstack-nova-compute.service
+</code></pre>
+<h5 id="cinder部分">cinder部分</h5>
+<blockquote>
+<p>/etc/cinder/cinder.conf</p>
+</blockquote>
+<pre><code>[oslo_messaging_notifications]
+driver = messagingv2
+</code></pre>
+<pre><code>crontab -e
+*/5 * * * * /path/to/cinder-volume-usage-audit --send_actions
+</code></pre>
+<pre><code>systemctl restart openstack-cinder-api.service openstack-cinder-scheduler.service
+systemctl restart openstack-cinder-volume.service
+</code></pre>
+<h5 id="glance部分">glance部分</h5>
+<blockquote>
+<p>/etc/glance/glance-api.conf</p>
+</blockquote>
+<pre><code>[DEFAULT]
+transport_url = rabbit://openstack:openstack@controller
+
+[oslo_messaging_notifications]
+driver = messagingv2
+</code></pre>
+<p><code>systemctl restart openstack-glance-api.service openstack-glance-registry.service</code></p>
+<h5 id="neutron部分">neutron部分</h5>
+<blockquote>
+<p>/etc/neutron/neutron.conf</p>
+</blockquote>
+<pre><code>[oslo_messaging_notifications]
+driver = messagingv2
+</code></pre>
+<blockquote>
+<p>systemctl restart neutron-server.service</p>
+</blockquote>
+<h5 id="swift部分">swift部分</h5>
+<pre><code>source admin-openrc
+openstack role create ResellerAdmin
+openstack role add --project service --user ceilometer ResellerAdmin
+
+yum install -y python-ceilometermiddleware
+</code></pre>
+<blockquote>
+<p>/etc/swift/proxy-server.conf</p>
+</blockquote>
+<pre><code>[filter:keystoneauth]
+operator_roles = admin, user, ResellerAdmin
+
+[pipeline:main]
+pipeline = catch_errors gatekeeper healthcheck proxy-logging cache container_sync bulk ratelimit authtoken keystoneauth container-quotas account-quotas slo dlo versioned_writes proxy-logging ceilometer proxy-server
+
+[filter:ceilometer]
+paste.filter_factory = ceilometermiddleware.swift:filter_factory
+control_exchange = swift
+url = rabbit://openstack:RABBIT_PASS@controller:5672/
+driver = messagingv2
+topic = notifications
+log_level = WARN
+</code></pre>
+<p><code>systemctl restart openstack-swift-proxy.service</code></p>
+<h5 id="heat部分">heat部分</h5>
+<blockquote>
+<p>/etc/heat/heat.conf</p>
+</blockquote>
+<pre><code>[oslo_messaging_notifications]
+driver = messagingv2
+</code></pre>
+<p><code>systemctl restart openstack-heat-api openstack-heat-api-cfn openstack-heat-engine</code></p>
+<hr>
+<p><mark>重启节点后如果出现问题 记得重启redis和ceilometer服务</mark></p>
+
+          </div>
+        </div>
+
+        
+          <div class="next-post">
+            <a class="purple-link" href="https://dorsey.github.io/post/2-an-zhuang-pankoshi-jian-cun-chu-fu-wu/">
+              <h3 class="post-title">
+                下一篇：2 安装Panko（事件存储服务）
+              </h3>
+            </a>
+          </div>
+          
+      </div>
+
+      
+
+      <div class="site-footer">
+  <div class="slogan">拾柒</div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+  Base on <a href="https://github.com/dorsey/" target="_blank">GitHub</a> | <a class="rss" href="https://dorsey.github.io//atom.xml" target="_blank">RSS</a>
+</div>
+
+
+    </div>
+    <script type="application/javascript">
+
+hljs.initHighlightingOnLoad()
+
+var app = new Vue({
+  el: '#app',
+  data: {
+    menuVisible: false,
+  },
+})
+
+</script>
+
+
+
+
+  </body>
+</html>

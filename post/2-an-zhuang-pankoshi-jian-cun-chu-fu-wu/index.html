@@ -1,0 +1,238 @@
+
+<!DOCTYPE html>
+<html>
+  <head>
+    
+<meta charset="utf-8" >
+
+<title>2 安装Panko（事件存储服务） | Komorebi</title>
+<meta name="description" content="拾柒">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.0/animate.min.css">
+
+<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr" crossorigin="anonymous">
+<link rel="shortcut icon" href="https://dorsey.github.io//favicon.ico?v=1590482321358">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+<link rel="stylesheet" href="https://dorsey.github.io//styles/main.css">
+
+
+
+<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+<script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+  </head>
+  <body>
+    <div id="app" class="main">
+      <div class="site-header-container">
+  <div class="site-header">
+    <div class="left">
+      <a href="https://dorsey.github.io/">
+        <img class="avatar" src="https://dorsey.github.io//images/avatar.png?v=1590482321358" alt="" width="32px" height="32px">
+      </a>
+      <a href="https://dorsey.github.io/">
+        <h1 class="site-title">Komorebi</h1>
+      </a>
+    </div>
+    <div class="right">
+      <transition name="fade">
+        <i class="icon" :class="{ 'icon-close-outline': menuVisible, 'icon-menu-outline': !menuVisible }" @click="menuVisible = !menuVisible"></i>
+      </transition>
+    </div>
+  </div>
+</div>
+
+<transition name="fade">
+  <div class="menu-container" style="display: none;" v-show="menuVisible">
+    <div class="menu-list">
+      
+        
+          <a href="/" class="menu purple-link">
+            首页
+          </a>
+        
+      
+        
+          <a href="/archives" class="menu purple-link">
+            归档
+          </a>
+        
+      
+        
+          <a href="/tags" class="menu purple-link">
+            标签
+          </a>
+        
+      
+        
+          <a href="/post/about" class="menu purple-link">
+            关于
+          </a>
+        
+      
+    </div>
+  </div>
+</transition>
+
+
+      <div class="content-container">
+        <div class="post-detail">
+          
+          <h2 class="post-title">2 安装Panko（事件存储服务）</h2>
+          <div class="post-info post-detail-info">
+            <span><i class="icon-calendar-outline"></i> 2020-05-26</span>
+            
+          </div>
+          <div class="post-content">
+            <h5 id="创建panko用户并添加角色">创建panko用户并添加角色</h5>
+<pre><code>openstack user create --domain default --password 123456 panko
+openstack role add --project service --user panko admin
+</code></pre>
+<h5 id="创建panko服务">创建panko服务</h5>
+<p><code>openstack service create event --name panko --description &quot;Panko Service&quot;</code></p>
+<h5 id="创建endpoints">创建endpoints</h5>
+<pre><code>openstack endpoint create --region RegionOne event admin http://controller:8977
+openstack endpoint create --region RegionOne event public http://controller:8977
+openstack endpoint create --region RegionOne event internal http://controller:8977
+</code></pre>
+<h5 id="配置mongodbyum源">配置MongoDByum源</h5>
+<pre><code>vim /etc/yum.repos.d/mongodb-org-4.0.repo
+
+[mngodb-org]
+name=MongoDB Repository
+baseurl=http://mirrors.aliyun.com/mongodb/yum/redhat/7Server/mongodb-org/4.0/x86_64/
+gpgcheck=0
+enabled=1
+
+yum clean all
+</code></pre>
+<h5 id="安装mongodb">安装MongoDB</h5>
+<p><code>yum -y install mongodb-org</code></p>
+<blockquote>
+<p>修改配置文件<br>
+<code>sed -i 's/127.0.0.1/0.0.0.0/' /etc/mongod.conf</code></p>
+</blockquote>
+<h5 id="启用服务">启用服务</h5>
+<pre><code>systemctl enable mongod.service
+systemctl start mongod.service
+</code></pre>
+<h5 id="使用mongodb保存事件数据预先创建数据库和用户">使用MongoDB保存事件数据，预先创建数据库和用户</h5>
+<blockquote>
+<p>连接mongo<br>
+<code>mongo</code><br>
+切换到panko数据库<br>
+<code>use panko</code><br>
+创建用户、角色<br>
+<code>db.createUser({user: &quot;panko&quot;,pwd: &quot;123456&quot;,roles: [ &quot;readWrite&quot;, &quot;dbAdmin&quot; ]})</code></p>
+</blockquote>
+<h5 id="安装panko">安装panko</h5>
+<p><code>yum install -y openstack-panko-api python2-pankoclient</code></p>
+<blockquote>
+<p>修改配置文件/etc/panko/panko.conf</p>
+</blockquote>
+<pre><code>[DEFAULT]
+debug = true
+log_dir = /var/log/panko
+
+[database]
+connection = mongodb://panko:123456@controller:27017/panko
+
+[keystone_authtoken]
+region_name = RegionOne
+www_authenticate_uri = http://controller:5000
+auth_url = http://controller:5000/v3
+memcached_servers = controller:11211
+auth_type = password
+project_domain_name = default
+user_domain_name = default
+project_name = service
+username = panko
+password = 123456
+</code></pre>
+<h5 id="初始化数据库">初始化数据库</h5>
+<p><code>panko-dbsync</code></p>
+<h5 id="建立服务文件">建立服务文件</h5>
+<blockquote>
+<p>Panko安装包内没有包含服务文件，为了便于管理，手动创建panko-api的服务文件<br>
+/usr/lib/systemd/system/openstack-panko-api.service</p>
+</blockquote>
+<pre><code>[Unit]
+Description=OpenStack Event API service
+After=syslog.target network.target
+
+[Service]
+Type=simple
+User=panko
+ExecStart=/usr/bin/panko-api --port 8977 -- --logfile /var/log/panko/api.log
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+</code></pre>
+<h5 id="启用服务-2">启用服务</h5>
+<pre><code>systemctl daemon-reload
+systemctl enable openstack-panko-api
+systemctl start openstack-panko-api
+</code></pre>
+<h5 id="验证">验证</h5>
+<blockquote>
+<p>前提是ceilometer装好后获取到了数据</p>
+</blockquote>
+<p><code>openstack event list</code></p>
+
+          </div>
+        </div>
+
+        
+          <div class="next-post">
+            <a class="purple-link" href="https://dorsey.github.io/post/1-an-zhuang-gnocchi-shi-jian-shu-ju/">
+              <h3 class="post-title">
+                下一篇：1 安装Gnocchi （时间数据）
+              </h3>
+            </a>
+          </div>
+          
+      </div>
+
+      
+
+      <div class="site-footer">
+  <div class="slogan">拾柒</div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+  Base on <a href="https://github.com/dorsey/" target="_blank">GitHub</a> | <a class="rss" href="https://dorsey.github.io//atom.xml" target="_blank">RSS</a>
+</div>
+
+
+    </div>
+    <script type="application/javascript">
+
+hljs.initHighlightingOnLoad()
+
+var app = new Vue({
+  el: '#app',
+  data: {
+    menuVisible: false,
+  },
+})
+
+</script>
+
+
+
+
+  </body>
+</html>
