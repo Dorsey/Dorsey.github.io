@@ -1,0 +1,244 @@
+
+<!DOCTYPE html>
+<html>
+  <head>
+    
+<meta charset="utf-8" >
+
+<title>1 安装Gnocchi （时间数据） | Komorebi</title>
+<meta name="description" content="拾柒">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.0/animate.min.css">
+
+<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr" crossorigin="anonymous">
+<link rel="shortcut icon" href="https://dorsey.github.io//favicon.ico?v=1590482081740">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+<link rel="stylesheet" href="https://dorsey.github.io//styles/main.css">
+
+
+
+<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+<script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+
+
+
+  </head>
+  <body>
+    <div id="app" class="main">
+      <div class="site-header-container">
+  <div class="site-header">
+    <div class="left">
+      <a href="https://dorsey.github.io/">
+        <img class="avatar" src="https://dorsey.github.io//images/avatar.png?v=1590482081740" alt="" width="32px" height="32px">
+      </a>
+      <a href="https://dorsey.github.io/">
+        <h1 class="site-title">Komorebi</h1>
+      </a>
+    </div>
+    <div class="right">
+      <transition name="fade">
+        <i class="icon" :class="{ 'icon-close-outline': menuVisible, 'icon-menu-outline': !menuVisible }" @click="menuVisible = !menuVisible"></i>
+      </transition>
+    </div>
+  </div>
+</div>
+
+<transition name="fade">
+  <div class="menu-container" style="display: none;" v-show="menuVisible">
+    <div class="menu-list">
+      
+        
+          <a href="/" class="menu purple-link">
+            首页
+          </a>
+        
+      
+        
+          <a href="/archives" class="menu purple-link">
+            归档
+          </a>
+        
+      
+        
+          <a href="/tags" class="menu purple-link">
+            标签
+          </a>
+        
+      
+        
+          <a href="/post/about" class="menu purple-link">
+            关于
+          </a>
+        
+      
+    </div>
+  </div>
+</transition>
+
+
+      <div class="content-container">
+        <div class="post-detail">
+          
+          <h2 class="post-title">1 安装Gnocchi （时间数据）</h2>
+          <div class="post-info post-detail-info">
+            <span><i class="icon-calendar-outline"></i> 2020-05-26</span>
+            
+          </div>
+          <div class="post-content">
+            <pre><code>source admin-openrc
+yum install -y centos-release-openstack-train
+</code></pre>
+<h5 id="创建user添加到管理员角色中">创建user&amp;添加到管理员角色中</h5>
+<pre><code>openstack user create --domain default --password 123456 ceilometer
+openstack role add --project service --user ceilometer admin
+openstack user create --domain default --password 123456 gnocchi
+openstack role add --project service --user gnocchi admin
+</code></pre>
+<h5 id="创建gnocchi服务">创建gnocchi服务</h5>
+<p><code>openstack service create --name gnocchi --description &quot;Metric Service&quot; metric</code></p>
+<h5 id="创建metricapi">创建MetricAPI</h5>
+<pre><code>openstack endpoint create --region RegionOne metric public http://controller:8041
+openstack endpoint create --region RegionOne metric internal http://controller:8041
+openstack endpoint create --region RegionOne metric admin http://controller:8041
+</code></pre>
+<h5 id="安装软件包">安装软件包</h5>
+<p><code>yum install -y openstack-gnocchi-api openstack-gnocchi-metricd python-gnocchiclient</code></p>
+<h5 id="创建数据库">创建数据库</h5>
+<pre><code>mysql -uroot -p123456 -e &quot;CREATE DATABASE gnocchi;&quot;
+mysql -uroot -p123456 -e &quot;GRANT ALL PRIVILEGES ON gnocchi.* TO 'gnocchi'@'localhost' IDENTIFIED BY '123456';&quot;
+mysql -uroot -p123456 -e &quot;GRANT ALL PRIVILEGES ON gnocchi.* TO 'gnocchi'@'%' IDENTIFIED BY '123456';&quot;
+</code></pre>
+<h5 id="修改gnocchi配置文件">修改gnocchi配置文件</h5>
+<blockquote>
+<p>/etc/gnocchi/gnocchi.conf</p>
+</blockquote>
+<pre><code>[DEFAULT]
+log_dir = /var/log/gnocchi 
+parallel_operations = 4 
+coordination_url = redis://controller:6379
+
+[api]
+auth_mode = keystone 
+host = 0.0.0.0
+port = 8041 
+uwsgi_mode = http-socket 
+max_limit = 1000
+
+[archive_policy]
+default_aggregation_methods = mean,min,max,sum,std,count
+
+[cors]
+allowed_origin = http://controller:3000
+
+[indexer]
+url = mysql+pymysql://gnocchi:123456@controller/gnocchi
+
+[metricd]
+workers = 4 
+metric_processing_delay = 60 
+greedy = true 
+metric_reporting_delay = 120 
+metric_cleanup_delay = 300
+
+[storage]
+coordination_url = redis://controller:6379 
+file_basepath = /var/lib/gnocchi 
+driver = file
+
+[keystone_authtoken]
+region_name = RegionOne 
+www_authenticate_uri = http://controller:5000 
+auth_url = http://controller:5000/v3 
+memcached_servers = controller:11211 
+auth_type = password 
+project_domain_name = default 
+user_domain_name = default 
+project_name = service 
+username = gnocchi 
+password = 123456
+</code></pre>
+<h5 id="安装配置redis">安装&amp;配置redis</h5>
+<pre><code>yum -y install redis
+
+vim /etc/redis.conf
+daemonize yes
+protected-mode no
+bind controllerIP
+</code></pre>
+<h5 id="启动服务">启动服务</h5>
+<pre><code>redis-server /etc/redis.conf
+vim /etc/rc.d/rc.local
+    redis-server /etc/redis.conf
+chmod +x /etc/rc.d/rc.local
+</code></pre>
+<h5 id="安装uwsgi插件">安装uwsgi插件</h5>
+<p><code>yum -y install uwsgi-plugin-common uwsgi-plugin-python uwsgi</code></p>
+<h5 id="完成安装">完成安装</h5>
+<pre><code>gnocchi-upgrade
+chmod -R 777 /var/lib/gnocchi
+systemctl enable openstack-gnocchi-api openstack-gnocchi-metricd
+systemctl start openstack-gnocchi-api openstack-gnocchi-metricd
+</code></pre>
+<h5 id="源码修改">源码修改</h5>
+<blockquote>
+<p>/usr/lib/python2.7/site-packages/gnocchiclient/shell.py 130行改为</p>
+</blockquote>
+<p><code>os.environ[&quot;OS_AUTH_TYPE&quot;] = &quot;password&quot;</code></p>
+<h5 id="验证">验证</h5>
+<p><code>gnocchi status</code></p>
+
+          </div>
+        </div>
+
+        
+          <div class="next-post">
+            <a class="purple-link" href="https://dorsey.github.io/post/markdown-demo/">
+              <h3 class="post-title">
+                下一篇：Markdown使用实例
+              </h3>
+            </a>
+          </div>
+          
+      </div>
+
+      
+
+      <div class="site-footer">
+  <div class="slogan">拾柒</div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+  Base on <a href="https://github.com/dorsey/" target="_blank">GitHub</a> | <a class="rss" href="https://dorsey.github.io//atom.xml" target="_blank">RSS</a>
+</div>
+
+
+    </div>
+    <script type="application/javascript">
+
+hljs.initHighlightingOnLoad()
+
+var app = new Vue({
+  el: '#app',
+  data: {
+    menuVisible: false,
+  },
+})
+
+</script>
+
+
+
+
+  </body>
+</html>
