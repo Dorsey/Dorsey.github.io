@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" >
+
+<title>安装cloudkitty(T版) | Komorebi</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+
+<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr" crossorigin="anonymous">
+<link rel="shortcut icon" href="https://dorsey.github.io//favicon.ico?v=1590716286482">
+<link rel="stylesheet" href="https://dorsey.github.io//styles/main.css">
+
+
+
+<link rel="stylesheet" href="https://unpkg.com/aos@next/dist/aos.css" />
+<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+
+
+
+    <meta name="description" content="安装软件包
+yum install openstack-cloudkitty-api openstack-cloudkitty-processor openstack-cloudkitty-ui -y
+修改配置文件
+
+/etc/cloudk..." />
+    <meta name="keywords" content="" />
+  </head>
+  <body>
+    <div id="app" class="main">
+
+      <div class="sidebar" :class="{ 'full-height': menuVisible }">
+  <div class="top-container" data-aos="fade-right">
+    <div class="top-header-container">
+      <a class="site-title-container" href="https://dorsey.github.io/">
+        <img src="https://dorsey.github.io//images/avatar.png?v=1590716286482" class="site-logo">
+        <h1 class="site-title">Komorebi</h1>
+      </a>
+      <div class="menu-btn" @click="menuVisible = !menuVisible">
+        <div class="line"></div>
+      </div>
+    </div>
+    <div>
+      
+        
+          <a href="/" class="site-nav">
+            首页
+          </a>
+        
+      
+        
+          <a href="/archives" class="site-nav">
+            归档
+          </a>
+        
+      
+        
+          <a href="/tags" class="site-nav">
+            标签
+          </a>
+        
+      
+        
+          <a href="/post/about" class="site-nav">
+            关于
+          </a>
+        
+      
+    </div>
+  </div>
+  <div class="bottom-container" data-aos="flip-up" data-aos-offset="0">
+    <div class="social-container">
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    </div>
+    <div class="site-description">
+      拾柒
+    </div>
+    <div class="site-footer">
+      Base on <a href="https://github.com/dorsey/" target="_blank">GitHub</a> | <a class="rss" href="https://dorsey.github.io//atom.xml" target="_blank">RSS</a>
+    </div>
+  </div>
+</div>
+
+
+      <div class="main-container">
+        <div class="content-container" data-aos="fade-up">
+          <div class="post-detail">
+            <h2 class="post-title">安装cloudkitty(T版)</h2>
+            <div class="post-date">2020-05-29</div>
+            
+              <div class="feature-container" style="background-image: url('https://dorsey.github.io//post-images/an-zhuang-cloudkittyt-ban.jpg')">
+              </div>
+            
+            <div class="post-content" v-pre>
+              <h4 id="安装软件包">安装软件包</h4>
+<p><code>yum install openstack-cloudkitty-api openstack-cloudkitty-processor openstack-cloudkitty-ui -y</code></p>
+<h4 id="修改配置文件">修改配置文件</h4>
+<blockquote>
+<p>/etc/cloudkitty/cloudkitty.conf</p>
+</blockquote>
+<pre><code>[DEFAULT]
+verbose = true
+debug = false
+log_dir = /var/log/cloudkitty
+transport_url = rabbit://openstack:openstack@controller
+auth_strategy = keystone
+
+[keystone_authtoken]
+auth_section = ks_auth
+
+[ks_auth]
+www_authenticate_uri = http://controller:5000
+auth_type = password
+auth_protocol = http
+auth_url = http://controller:5000/v3
+identity_uri = http://controller:5000/
+username = cloudkitty
+password = 123456
+project_name = service
+user_domain_name = default
+project_domain_name = default
+region_name = RegionOne
+
+[database]
+connection = mysql+pymysql://cloudkitty:123456@controller/cloudkitty
+
+[storage]
+version = 2
+backend = influxdb
+
+[storage_influxdb]
+username = cloudkitty
+password = 123456
+database = cloudkitty
+host = controller
+
+[fetcher]
+backend = gnocchi
+
+[fetcher_gnocchi]
+auth_section = ks_auth
+region_name = RegionOne
+
+[collect]
+collector = gnocchi
+
+[collector_gnocchi]
+auth_section = ks_auth
+region_name = RegionOne
+</code></pre>
+<p><mark>因为后端存储用到了influxdb所以安装配置influxdb</mark></p>
+<pre><code>yum install -y wget
+wget https://dl.influxdata.com/influxdb/releases/influxdb-1.8.0.x86_64.rpm
+yum localinstall influxdb-1.8.0.x86_64.rpm -y 
+systemctl start influxdb.service
+
+influx
+# 创建数据库
+create database &quot;cloudkitty&quot;
+# 创建管理员用户
+create user &quot;cloudkitty&quot; with password '123456' with all privileges
+</code></pre>
+<h4 id="将cloudkitty集成到keystone中">将cloudkitty集成到Keystone中</h4>
+<pre><code>openstack user create --domain default --password 123456 cloudkitty
+openstack role add --project service --user cloudkitty admin
+openstack service create rating --name cloudkitty --description &quot;OpenStack Rating Service&quot;
+openstack endpoint create rating --region RegionOne public http://controller:8889
+openstack endpoint create rating --region RegionOne internal http://controller:8889
+openstack endpoint create rating --region RegionOne admin http://controller:8889
+</code></pre>
+<h4 id="数据库操作">数据库操作</h4>
+<pre><code># 创建数据库的时候这里要设置编码格式为gbk
+mysql -uroot -p123456 -e &quot;CREATE DATABASE cloudkitty default character set gbk;&quot;
+mysql -uroot -p123456 -e &quot;GRANT ALL PRIVILEGES ON cloudkitty.* TO 'cloudkitty'@'localhost' IDENTIFIED BY '123456';&quot;
+mysql -uroot -p123456 -e &quot;GRANT ALL PRIVILEGES ON cloudkitty.* TO 'cloudkitty'@'%' IDENTIFIED BY '123456';&quot;
+</code></pre>
+<h4 id="初始化数据库">初始化数据库</h4>
+<p><code>cloudkitty-storage-init</code></p>
+<h4 id="数据库迁移">数据库迁移</h4>
+<p><code>cloudkitty-dbsync upgrade</code></p>
+<h4 id="修改服务文件cloudkitty默认监听的是8000端口但官方描述的是8889-修改aodh的服务文件添加-port-8889参数">修改服务文件，cloudkitty默认监听的是8000端口，但官方描述的是8889。修改aodh的服务文件，添加--port 8889参数</h4>
+<blockquote>
+<p>/usr/lib/systemd/system/cloudkitty-api.service</p>
+</blockquote>
+<p><code>ExecStart=/usr/bin/cloudkitty-api --port 8889 -- --logfile /var/log/cloudkitty/api.log --config-file /etc/cloudkitty/cloudkitty.conf</code></p>
+<h4 id="启用服务">启用服务</h4>
+<pre><code>systemctl enable cloudkitty-api cloudkitty-processor
+systemctl start cloudkitty-api cloudkitty-processor
+</code></pre>
+
+            </div>
+            
+            
+              <div class="next-post">
+                <div class="next">下一篇</div>
+                <a href="https://dorsey.github.io/post/3-an-zhuang-ceilometershu-ju-cai-ji-fu-wu/">
+                  <h3 class="post-title">
+                    3 安装Ceilometer（数据采集服务）
+                  </h3>
+                </a>
+              </div>
+            
+
+            
+
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/aos@next/dist/aos.js"></script>
+<script type="application/javascript">
+
+AOS.init();
+
+var app = new Vue({
+  el: '#app',
+  data: {
+    menuVisible: false,
+  },
+})
+
+</script>
+
+
+
+
+
+
+  </body>
+</html>
